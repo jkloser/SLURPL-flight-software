@@ -56,7 +56,7 @@ void setup(){
 	//0b111 	|		20
 	bme.parameter.tStandby = 0b000;
 
-	if (bme280.init() != 0x60){
+	if (bme.init() != 0x60){
 		Serial.println("BME280 could not be found.");
 		while(1);
 	}

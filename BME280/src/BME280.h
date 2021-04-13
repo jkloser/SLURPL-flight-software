@@ -8,7 +8,6 @@
 #endif
 
 #include "Wire.h"
-#include "SPI.h"
 
 //Defines the memory register addresses of the sensor
 #define BME280_chip_id    0xD0
@@ -28,7 +27,7 @@
 
 
 
-struct DeviceParameter{
+struct DeviceSettings{
 	uint8_t I2CAddress;
 	uint8_t sensorMode;
 	uint8_t IIRfilter;
@@ -62,9 +61,9 @@ struct BME280_Coefficients{
 };
 
 struct BME280_Measurements{
-	float temp
-	float press
-	float humid
+	float temp;
+	float press;
+	float humid;
 };
 
 enum Coefficients{
@@ -110,7 +109,7 @@ enum Coefficients{
 
 class BME280{
 public:
-	DeviceParameter parameter;
+	DeviceSettings settings;
 	BME280_Coefficients bme280_coefficients;
 	int32_t t_fine;
 
@@ -130,5 +129,5 @@ public:
 	float readPress(void);
 	float readHumid(void);
 	void readAll(BME280_Measurements *measurements);
-}
+};
 #endif
