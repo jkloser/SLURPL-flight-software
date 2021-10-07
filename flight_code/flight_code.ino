@@ -4,18 +4,13 @@
 #include <Wire.h>
 #include <SparkFunBME280.h>
 #include <SparkFunLSM9DS1.h>
-#include <RHReliableDatagram.h>
 #include <RH_RF95.h>
 
 const int cs_gps = 15;
 const int cs_sd = 14;
 const int cs_radio = 22;
 const int radio_interrupt = 6;
-const int radio_address_rocket = 1;
-const int radio_address_ground = 2;
-const int radio_address_all = 255;
 char data_string[80]; // maximum length for RF95 is 251 bytes
-bool tx_success = false;
 const int grn_led = 2;
 const int red_led = 3;
 const int bzzr = 23;
@@ -26,8 +21,7 @@ BME280 bme;
 LSM9DS1 imu;
 BME280_SensorMeasurements measurements;
 TinyGPSPlus gps;
-RH_RF95 driver(cs_radio, radio_interrupt); //chip select and interrupt pin
-RHReliableDatagram manager(driver, radio_address_rocket);
+RH_RF95 rf95(cs_radio, radio_interrupt); //chip select and interrupt pin
 
 void errorTone();
 void sirenTone();
@@ -37,9 +31,8 @@ bool readBME();
 bool readIMU();
 void writeBME(bool);
 void writeIMU(bool);
-void writeMicros();
+void writeMillis();
 void write2SD();
-bool write2Radio();
 
 void setup() {
   Serial.begin(9600);
@@ -58,26 +51,26 @@ void setup() {
   digitalWrite(red_led, LOW);
   
   // Setup SPI Bus
-  SPI.begin();
+  //SPI.begin();
   pinMode(cs_gps, OUTPUT);
   pinMode(cs_sd, OUTPUT);
+  pinMode(cs_radio, OUTPUT);
   if (!SD.begin(cs_sd)){
     digitalWrite(grn_led, HIGH);
     errorTone();
     Serial.println("sd failure");
   }
 
-  if (!manager.init()){
+  if (!rf95.init()){
     digitalWrite(grn_led, HIGH);
     errorTone();
     Serial.println("radio failure");
   }
-  if (driver.setFrequency(915.0)){
+  if (!rf95.setFrequency(915.0)){
     digitalWrite(grn_led, HIGH);
     errorTone();
     Serial.println("frequency failure");
   }
-  manager.setRetries(0);
 
   // Setup I2C Bus
   Wire.begin();
@@ -109,6 +102,7 @@ void setup() {
   writeHeaders();
   //sirenTone();
   noTone(bzzr);
+  Serial.end();
 }
 
 void loop() {
@@ -132,17 +126,13 @@ void loop() {
     writeIMU(newIMU);
   }
 
-  writeMicros();
+  writeMillis();
   
   write2SD();
-  Serial.println(data_string);
+  //Serial.println(data_string);
 
-  if (micros() - last_tx > 1000){
-    interrupts();
-    //driver.send((uint8_t*)data_string, sizeof(data_string));
-    //tx_success = write2Radio(radio_address_ground);
-    last_tx = micros();
-    noInterrupts();
+  if (micros() - last_tx > 100000){
+    rf95.send((uint8_t*)data_string, sizeof(data_string));
   }
 }
 
@@ -167,7 +157,7 @@ void sirenTone(){
 void writeHeaders(){
   // Note: This does not create a new file each time the computer is powered on.
   // To denote between power cycles, a header line is written.
-  String header = "Time,Lattitude,Longitude,Pressure,Temperature,AccelX,AccelY,AccelZ,GyroX,GyroY,GyroZ,ucTime";
+  String header = "Time,Lattitude,Longitude,Pressure,Temperature,AccelX,AccelY,AccelZ,GyroX,GyroY,GyroZ,msTime";
   File dataFile = SD.open("test_log.txt", FILE_WRITE);
   if (dataFile){
     dataFile.println(header);
@@ -191,16 +181,20 @@ void readGPS(){
   if (gps.time.isValid()){
     sprintf(temp_time, "%.2d:%.2d:%.2d,", gps.time.hour(), gps.time.minute(), gps.time.second());
   } else {
-    strcpy(temp_time, "XX:XX:XX,");
+    strcpy(temp_time, ",");
   }
   strcpy(data_string, temp_time);
 
   if (gps.location.isValid()){
     dtostrf(gps.location.lat(), 8, 5, temp_lat);
+    strcat(data_string, temp_lat);
+    strcat(data_string, "x");
+    
     dtostrf(gps.location.lng(), 8, 5, temp_long);
+    strcat(data_string, temp_long);
+    strcat(data_string, ",");
   } else {
-    strcpy(temp_lat, "X");
-    strcpy(temp_long, "X");
+    strcat(data_string, ",,");
   }
 
   strcat(data_string, temp_lat);
@@ -219,7 +213,7 @@ bool readBME(){
 }
 
 bool readIMU(){
-  last_read_sensors = millis();
+  last_read_sensors = micros();
   bool success = false;
   if (imu.gyroAvailable()){
     imu.readGyro();
@@ -275,9 +269,9 @@ void writeIMU(bool newData){
   }
 }
 
-void writeMicros(){
+void writeMillis(){
   char temp[10];
-  sprintf(temp, "%lu", micros());
+  sprintf(temp, "%lu", millis());
   strcat(data_string, temp);
 }
 
@@ -288,19 +282,4 @@ void write2SD(){
     dataFile.println(data_string);
     dataFile.close();
   }
-}
-
-bool write2Radio(int address){
-  //return driver.send((uint8_t*)data_string, sizeof(data_string));
-  //uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
-  // must cast the data_string as uint8_t
-  driver.send((uint8_t*)data_string, sizeof(data_string));//, address);
-  return false;
-    //uint8_t len = sizeof(buf);
-    //uint8_t from;
-    //if (manager.recvfromAckTimeout(buf, &len, 2000, &from)){
-      //return true;
-    //}
-
-  //return false;
 }
